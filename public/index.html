@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ML Serving Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+    #drop-zone.drag-over {
+      border-color: #6366f1;
+      background-color: rgba(99, 102, 241, 0.08);
+    }
+
+    .bar-fill {
+      width: 0%;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(99,102,241,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    #preview-img {
+      max-height: 260px;
+      object-fit: contain;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-950 text-white min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-base">🧠</div>
+      <div>
+        <h1 class="font-bold text-base leading-tight">ML Serving Platform</h1>
+        <p class="text-gray-500 text-xs">EfficientNet-B0 · ImageNet 1000 classes</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="status-dot" class="flex items-center gap-1.5 text-xs text-gray-500">
+        <span class="w-2 h-2 rounded-full bg-gray-600"></span> checking…
+      </span>
+      <a href="/docs" target="_blank"
+        class="text-xs px-3 py-1.5 border border-gray-700 hover:border-gray-500 rounded-lg text-gray-400 hover:text-white transition">
+        API docs ↗
+      </a>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex-1 flex items-start justify-center px-4 py-10 gap-8 flex-wrap">
+
+    <!-- Left: upload -->
+    <div class="w-full max-w-md">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Upload Image</h2>
+
+      <!-- Drop zone -->
+      <div id="drop-zone"
+        class="relative border-2 border-dashed border-gray-700 rounded-2xl p-8 text-center cursor-pointer hover:border-gray-500 transition-all bg-gray-900 mb-4"
+        onclick="document.getElementById('file-input').click()"
+        ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+
+        <!-- Idle state -->
+        <div id="dz-idle">
+          <div class="text-4xl mb-3 opacity-40">🖼️</div>
+          <p class="text-gray-400 text-sm font-medium">Drop an image here</p>
+          <p class="text-gray-600 text-xs mt-1">or click to browse · JPEG, PNG, WebP · max 10 MB</p>
+        </div>
+
+        <!-- Preview state -->
+        <div id="dz-preview" class="hidden">
+          <img id="preview-img" class="mx-auto rounded-xl mb-3" alt="Preview" />
+          <p id="preview-name" class="text-gray-400 text-xs truncate"></p>
+        </div>
+
+        <input id="file-input" type="file" accept="image/*" class="hidden" onchange="onFileSelected(event)" />
+      </div>
+
+      <!-- Classify button -->
+      <button id="classify-btn" onclick="classify()" disabled
+        class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-semibold text-sm transition-all">
+        Classify Image
+      </button>
+
+      <!-- Try an example -->
+      <div class="mt-4 text-center">
+        <p class="text-xs text-gray-600 mb-2">No image? Try an example:</p>
+        <div class="flex justify-center gap-2 flex-wrap">
+          <button onclick="loadExample('https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Cute_dog.jpg/320px-Cute_dog.jpg', 'dog.jpg')"
+            class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition">🐶 Dog</button>
+          <button onclick="loadExample('https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg', 'ant.jpg')"
+            class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition">🐜 Ant</button>
+          <button onclick="loadExample('https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/320px-Image_created_with_a_mobile_phone.png', 'flower.png')"
+            class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition">🌸 Flower</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: results -->
+    <div class="w-full max-w-md">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Predictions</h2>
+
+      <!-- Idle placeholder -->
+      <div id="results-idle" class="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center text-gray-600">
+        <div class="text-4xl mb-3 opacity-30">📊</div>
+        <p class="text-sm">Results will appear here</p>
+      </div>
+
+      <!-- Loading -->
+      <div id="results-loading" class="hidden bg-gray-900 border border-gray-800 rounded-2xl p-10 flex flex-col items-center gap-4">
+        <div class="spinner"></div>
+        <p class="text-gray-500 text-sm">Running inference…</p>
+      </div>
+
+      <!-- Error -->
+      <div id="results-error" class="hidden bg-red-950 border border-red-800 rounded-2xl p-6 text-red-300 text-sm"></div>
+
+      <!-- Results -->
+      <div id="results-box" class="hidden bg-gray-900 border border-gray-800 rounded-2xl p-6">
+
+        <!-- Meta row -->
+        <div class="flex items-center justify-between mb-5">
+          <span id="res-filename" class="text-xs text-gray-500 truncate max-w-[60%]"></span>
+          <span id="res-latency"
+            class="text-xs font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-1 rounded-lg">
+          </span>
+        </div>
+
+        <!-- Top prediction hero -->
+        <div id="res-top" class="mb-5 p-4 bg-indigo-600/10 border border-indigo-500/20 rounded-xl">
+          <p class="text-xs text-indigo-400 uppercase tracking-widest mb-1">Top prediction</p>
+          <p id="res-top-label" class="text-xl font-bold capitalize"></p>
+          <p id="res-top-conf" class="text-indigo-300 text-sm mt-0.5"></p>
+        </div>
+
+        <!-- Top-5 bars -->
+        <div id="res-bars" class="space-y-3"></div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-800 px-6 py-3 text-center text-xs text-gray-700">
+    EfficientNet-B0 · PyTorch · FastAPI · Prometheus ·
+    <a href="/docs" class="hover:text-gray-500 transition">Swagger UI</a> ·
+    <a href="/metrics" class="hover:text-gray-500 transition">Metrics</a>
+  </footer>
+
+<script>
+const API = `${location.protocol}//${location.hostname}:8000`;
+let selectedFile = null;
+
+// ── Health check ──────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`);
+    const dot = document.getElementById('status-dot');
+    if (r.ok) {
+      dot.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> API online';
+      dot.className = 'flex items-center gap-1.5 text-xs text-green-400';
+    } else {
+      throw new Error();
+    }
+  } catch {
+    const dot = document.getElementById('status-dot');
+    dot.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API offline';
+    dot.className = 'flex items-center gap-1.5 text-xs text-red-400';
+  }
+}
+checkHealth();
+
+// ── Drag & drop ───────────────────────────────────────────────────────────────
+function onDragOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+}
+function onDragLeave() {
+  document.getElementById('drop-zone').classList.remove('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) setFile(file);
+}
+function onFileSelected(e) {
+  const file = e.target.files[0];
+  if (file) setFile(file);
+}
+
+function setFile(file) {
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('preview-img').src = e.target.result;
+    document.getElementById('preview-name').textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} KB`;
+    document.getElementById('dz-idle').classList.add('hidden');
+    document.getElementById('dz-preview').classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+  document.getElementById('classify-btn').disabled = false;
+  resetResults();
+}
+
+// ── Example loader ────────────────────────────────────────────────────────────
+async function loadExample(url, name) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+    setFile(file);
+  } catch {
+    alert('Could not load example image — check your internet connection.');
+  }
+}
+
+// ── Classify ──────────────────────────────────────────────────────────────────
+async function classify() {
+  if (!selectedFile) return;
+
+  showLoading();
+
+  const form = new FormData();
+  form.append('file', selectedFile);
+
+  try {
+    const res = await fetch(`${API}/predict`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      showError(`Error ${res.status}: ${err.detail}`);
+      return;
+    }
+    const data = await res.json();
+    showResults(data);
+  } catch (e) {
+    showError('Could not reach the API. Make sure the server is running on port 8000.');
+  }
+}
+
+// ── UI states ─────────────────────────────────────────────────────────────────
+function resetResults() {
+  document.getElementById('results-idle').classList.remove('hidden');
+  document.getElementById('results-loading').classList.add('hidden');
+  document.getElementById('results-error').classList.add('hidden');
+  document.getElementById('results-box').classList.add('hidden');
+}
+
+function showLoading() {
+  document.getElementById('results-idle').classList.add('hidden');
+  document.getElementById('results-loading').classList.remove('hidden');
+  document.getElementById('results-error').classList.add('hidden');
+  document.getElementById('results-box').classList.add('hidden');
+}
+
+function showError(msg) {
+  document.getElementById('results-idle').classList.add('hidden');
+  document.getElementById('results-loading').classList.add('hidden');
+  document.getElementById('results-error').classList.remove('hidden');
+  document.getElementById('results-box').classList.add('hidden');
+  document.getElementById('results-error').textContent = msg;
+}
+
+function showResults(data) {
+  document.getElementById('results-idle').classList.add('hidden');
+  document.getElementById('results-loading').classList.add('hidden');
+  document.getElementById('results-error').classList.add('hidden');
+  document.getElementById('results-box').classList.remove('hidden');
+
+  const top = data.predictions[0];
+  document.getElementById('res-filename').textContent = data.filename;
+  document.getElementById('res-latency').textContent = `⚡ ${data.inference_ms} ms`;
+  document.getElementById('res-top-label').textContent = top.label.replace(/_/g, ' ');
+  document.getElementById('res-top-conf').textContent = `${top.confidence}% confidence`;
+
+  // Render bars
+  const barsEl = document.getElementById('res-bars');
+  barsEl.innerHTML = '';
+  data.predictions.forEach((p, i) => {
+    const bar = document.createElement('div');
+    bar.innerHTML = `
+      <div class="flex justify-between text-xs mb-1">
+        <span class="text-gray-300 font-medium capitalize truncate max-w-[70%]">${p.label.replace(/_/g, ' ')}</span>
+        <span class="text-gray-500 font-mono">${p.confidence}%</span>
+      </div>
+      <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div class="bar-fill h-full rounded-full ${i === 0 ? 'bg-indigo-500' : 'bg-gray-600'}" data-target="${p.confidence}"></div>
+      </div>`;
+    barsEl.appendChild(bar);
+  });
+
+  // Animate bars after paint
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('.bar-fill').forEach(el => {
+      el.style.width = el.dataset.target + '%';
+    });
+  }));
+}
+</script>
+</body>
+</html>

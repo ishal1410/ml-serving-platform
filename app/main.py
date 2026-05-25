@@ -1,12 +1,17 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api import predict, health
 from app.core.config import settings
 from app.core.model import model_manager
+
+PUBLIC_DIR = Path(__file__).parent.parent / "public"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,3 +46,7 @@ Instrumentator().instrument(app).expose(app)
 
 app.include_router(health.router, tags=["Health"])
 app.include_router(predict.router, tags=["Inference"])
+
+# Serve the UI — mount after API routes so /docs, /health etc. take priority
+if PUBLIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=PUBLIC_DIR, html=True), name="static")
