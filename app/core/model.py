@@ -1,74 +1,103 @@
-import torch
-import torchvision.transforms as transforms
-from torchvision import models
-from PIL import Image
-import boto3
 import io
-import os
+import logging
+import time
+import threading
+
+import boto3
+import torch
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+from PIL import Image
+
 from app.core.config import settings
 
-# ImageNet class labels (top 10 for demo)
-LABELS = [
-    "tench", "goldfish", "great white shark", "tiger shark",
-    "hammerhead shark", "electric ray", "stingray", "cock", "hen", "ostrich"
-]
+logger = logging.getLogger(__name__)
+
 
 class ModelManager:
-    def __init__(self):
-        self.model = None
-        self.transform = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            )
-        ])
+    """Thread-safe wrapper around an EfficientNet-B0 image classifier."""
 
-    def load_from_s3(self):
-        """Load model from AWS S3"""
+    def __init__(self) -> None:
+        self.model: torch.nn.Module | None = None
+        self._lock = threading.Lock()
+
+        # Use the official weights object — gives us the correct pre-processing
+        # transform AND all 1000 ImageNet class names with a single import.
+        self._weights = EfficientNet_B0_Weights.DEFAULT
+        self.transform = self._weights.transforms()
+        self.labels: list[str] = self._weights.meta["categories"]  # 1000 classes
+
+    # ── Loading ───────────────────────────────────────────────────────────────
+
+    def load_default(self) -> None:
+        """Load the official ImageNet-pretrained EfficientNet-B0 weights."""
+        logger.info("Loading default EfficientNet-B0 (ImageNet pretrained)…")
+        with self._lock:
+            self.model = efficientnet_b0(weights=self._weights)
+            self.model.eval()
+        logger.info("Default model ready (%d output classes)", len(self.labels))
+
+    def load_from_s3(self) -> None:
+        """Download a fine-tuned model from S3; fall back to default on error."""
+        logger.info(
+            "Downloading model from s3://%s/%s…", settings.S3_BUCKET, settings.MODEL_KEY
+        )
         try:
             s3 = boto3.client(
-                's3',
+                "s3",
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_REGION
+                region_name=settings.AWS_REGION,
             )
-            buffer = io.BytesIO()
-            s3.download_fileobj(settings.S3_BUCKET, settings.MODEL_KEY, buffer)
-            buffer.seek(0)
-            self.model = torch.load(buffer, map_location=torch.device('cpu'))
-            self.model.eval()
-            print("Model loaded from S3")
-        except Exception as e:
-            print(f"S3 load failed: {e}. Loading default model...")
+            buf = io.BytesIO()
+            s3.download_fileobj(settings.S3_BUCKET, settings.MODEL_KEY, buf)
+            buf.seek(0)
+            with self._lock:
+                self.model = torch.load(buf, map_location="cpu")
+                self.model.eval()
+            logger.info("S3 model loaded successfully")
+        except Exception:
+            logger.exception("S3 load failed — falling back to default model")
             self.load_default()
 
-    def load_default(self):
-        """Load pretrained EfficientNet as default"""
-        self.model = models.efficientnet_b0(pretrained=True)
-        self.model.eval()
-        print("Default EfficientNet-B0 model loaded")
+    @property
+    def is_ready(self) -> bool:
+        return self.model is not None
 
-    def predict(self, image: Image.Image) -> dict:
-        """Run inference on image"""
-        if self.model is None:
+    # ── Inference ─────────────────────────────────────────────────────────────
+
+    def predict(self, image: Image.Image, top_k: int = 5) -> dict:
+        """
+        Run inference and return the top-k predictions with confidence scores.
+
+        Returns:
+            {
+                "predictions": [{"label": str, "confidence": float}, ...],
+                "inference_ms": float
+            }
+        """
+        if not self.is_ready:
             self.load_default()
 
         tensor = self.transform(image).unsqueeze(0)
-        with torch.no_grad():
-            outputs = self.model(tensor)
-            probabilities = torch.nn.functional.softmax(outputs[0], dim=0)
-            top5 = torch.topk(probabilities, 5)
 
-        results = []
-        for prob, idx in zip(top5.values, top5.indices):
-            label = LABELS[idx] if idx < len(LABELS) else f"class_{idx}"
-            results.append({
-                "label": label,
-                "confidence": round(prob.item() * 100, 2)
-            })
-        return {"predictions": results}
+        t0 = time.perf_counter()
+        with self._lock:
+            with torch.no_grad():
+                logits = self.model(tensor)
+        inference_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+        probs = torch.nn.functional.softmax(logits[0], dim=0)
+        top = torch.topk(probs, min(top_k, len(self.labels)))
+
+        predictions = [
+            {
+                "label": self.labels[idx.item()],
+                "confidence": round(prob.item() * 100, 2),
+            }
+            for prob, idx in zip(top.values, top.indices)
+        ]
+
+        return {"predictions": predictions, "inference_ms": inference_ms}
+
 
 model_manager = ModelManager()
