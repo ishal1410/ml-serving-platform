@@ -4,185 +4,475 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ML Serving Platform</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    #drop-zone.drag-over {
-      border-color: #6366f1;
-      background-color: rgba(99, 102, 241, 0.08);
+    :root {
+      --bg:         #f5f6fa;
+      --surface:    #ffffff;
+      --surface2:   #f8f9fc;
+      --border:     #e4e7ef;
+      --border2:    #d1d6e3;
+      --accent:     #6366f1;
+      --accent-lt:  #ede9fe;
+      --accent-dk:  #4338ca;
+      --text:       #111827;
+      --text-sub:   #6b7280;
+      --text-mute:  #9ca3af;
+      --green:      #10b981;
+      --red:        #ef4444;
+      --shadow-sm:  0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md:  0 4px 12px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
     }
 
-    .bar-fill {
-      width: 0%;
-      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 40px;
+      height: 62px;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent) 0%, #818cf8 100%);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.3);
     }
-    .spinner {
-      width: 28px; height: 28px;
-      border: 3px solid rgba(99,102,241,0.2);
-      border-top-color: #6366f1;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+    .logo-text h1 { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+    .logo-text p  { font-size: 11px; color: var(--text-mute); font-family: 'JetBrains Mono', monospace; }
+
+    .header-right { display: flex; align-items: center; gap: 10px; }
+
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 99px;
+      border: 1px solid var(--border2);
+      color: var(--text-sub);
+      background: var(--surface2);
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-mute); flex-shrink: 0; }
+    .status-badge.online  { border-color: #a7f3d0; background: #ecfdf5; color: #065f46; }
+    .status-badge.online .status-dot { background: var(--green); box-shadow: 0 0 0 2px #d1fae5; }
+    .status-badge.offline { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+    .status-badge.offline .status-dot { background: var(--red); }
+
+    .btn-ghost {
+      font-size: 12px; font-weight: 500;
+      padding: 6px 14px; border-radius: 8px;
+      border: 1px solid var(--border2);
+      color: var(--text-sub); background: var(--surface);
+      text-decoration: none; cursor: pointer;
+      transition: border-color .15s, color .15s, background .15s, box-shadow .15s;
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-lt); }
+
+    /* ── Main layout ─────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      max-width: 1080px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 40px;
+    }
+    @media (max-width: 740px) {
+      main { grid-template-columns: 1fr; padding: 24px 16px; }
     }
 
+    .section-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-mute); margin-bottom: 14px;
+    }
+
+    /* ── Drop zone ───────────────────────────────────────────────── */
+    #drop-zone {
+      background: var(--surface);
+      border: 2px dashed var(--border2);
+      border-radius: 16px;
+      padding: 44px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s, box-shadow .2s;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 14px;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-lt);
+      box-shadow: 0 0 0 4px rgba(99,102,241,0.08);
+    }
+
+    .dz-icon {
+      width: 56px; height: 56px; margin: 0 auto 16px;
+      border-radius: 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+      box-shadow: var(--shadow-sm);
+    }
+    .dz-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+    .dz-sub   { font-size: 12px; color: var(--text-mute); }
+    .dz-sub span { color: var(--accent); font-weight: 600; }
+
+    #dz-preview { display: none; }
     #preview-img {
-      max-height: 260px;
-      object-fit: contain;
+      max-height: 200px; border-radius: 10px; object-fit: contain;
+      display: block; margin: 0 auto 12px;
+      box-shadow: var(--shadow-md);
     }
+    #preview-meta {
+      font-size: 12px; font-family: 'JetBrains Mono', monospace;
+      color: var(--text-sub);
+    }
+
+    /* ── Primary button ──────────────────────────────────────────── */
+    .btn-primary {
+      width: 100%; padding: 13px;
+      border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--accent) 0%, #818cf8 100%);
+      color: #fff; font-size: 14px; font-weight: 600;
+      cursor: pointer; letter-spacing: -0.01em;
+      box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+      transition: opacity .15s, transform .1s, box-shadow .15s;
+    }
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.92;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+
+    /* ── Example buttons ─────────────────────────────────────────── */
+    .examples { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+    .examples-label { font-size: 11px; color: var(--text-mute); white-space: nowrap; }
+    .examples-btns  { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-example {
+      font-size: 12px; font-weight: 500;
+      padding: 5px 12px; border-radius: 8px;
+      border: 1px solid var(--border2);
+      background: var(--surface); color: var(--text-sub);
+      cursor: pointer;
+      transition: border-color .15s, color .15s, background .15s;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-example:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-lt); }
+
+    /* ── Results card ────────────────────────────────────────────── */
+    .results-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      min-height: 340px;
+    }
+
+    /* Idle */
+    .state-idle {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 64px 24px; gap: 14px; text-align: center;
+    }
+    .idle-icon {
+      width: 60px; height: 60px;
+      border-radius: 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+      box-shadow: var(--shadow-sm);
+    }
+    .idle-title { font-size: 14px; font-weight: 500; color: var(--text-sub); }
+    .idle-sub   { font-size: 12px; color: var(--text-mute); }
+
+    /* Loading */
+    .state-loading {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 64px 24px; gap: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--accent-lt);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+    }
+    .loading-title { font-size: 14px; font-weight: 500; color: var(--text); }
+    .loading-sub   { font-size: 12px; color: var(--text-mute); font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
+
+    /* Error */
+    .state-error { padding: 24px; }
+    .error-box {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 16px; border-radius: 10px;
+      background: #fef2f2; border: 1px solid #fecaca;
+      color: #b91c1c; font-size: 13px;
+    }
+    .error-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* Results */
+    .state-results { padding: 24px; }
+
+    .result-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 16px; margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-filename {
+      font-size: 12px; font-family: 'JetBrains Mono', monospace;
+      color: var(--text-sub);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
+    }
+    .result-latency {
+      font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 500;
+      background: var(--accent-lt);
+      border: 1px solid rgba(99,102,241,0.2);
+      color: var(--accent);
+      padding: 3px 10px; border-radius: 99px;
+      white-space: nowrap;
+    }
+
+    /* Top prediction */
+    .top-prediction {
+      background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+      border: 1px solid rgba(99,102,241,0.18);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .top-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--accent);
+      background: white;
+      border: 1px solid rgba(99,102,241,0.2);
+      padding: 3px 10px; border-radius: 99px;
+      margin-bottom: 10px;
+    }
+    .top-label {
+      font-size: 24px; font-weight: 700; letter-spacing: -0.02em;
+      color: var(--text); text-transform: capitalize; margin-bottom: 4px;
+    }
+    .top-conf       { font-size: 13px; color: var(--text-sub); }
+    .top-conf strong { color: var(--accent); font-size: 16px; font-weight: 700; }
+
+    /* Bars */
+    .bars { display: flex; flex-direction: column; gap: 13px; }
+    .bar-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 5px;
+    }
+    .bar-label {
+      font-size: 13px; font-weight: 500; color: var(--text);
+      text-transform: capitalize;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%;
+    }
+    .bar-pct {
+      font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--text-sub);
+      flex-shrink: 0;
+    }
+    .bar-track { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill  { height: 100%; width: 0%; border-radius: 99px; transition: width .7s cubic-bezier(.4,0,.2,1); }
+    .bar-fill.top   { background: linear-gradient(90deg, var(--accent), #818cf8); }
+    .bar-fill.other { background: var(--border2); }
+
+    /* ── Footer ──────────────────────────────────────────────────── */
+    footer {
+      padding: 16px 40px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .footer-stack { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tech-chip {
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      color: var(--text-mute); padding: 3px 10px;
+      border-radius: 6px; background: var(--surface2); border: 1px solid var(--border);
+    }
+    .footer-links { display: flex; gap: 16px; }
+    .footer-links a {
+      font-size: 12px; color: var(--text-mute); text-decoration: none;
+      transition: color .15s;
+    }
+    .footer-links a:hover { color: var(--accent); }
   </style>
 </head>
 
-<body class="bg-gray-950 text-white min-h-screen flex flex-col">
+<body>
 
-  <!-- Header -->
-  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-base">🧠</div>
-      <div>
-        <h1 class="font-bold text-base leading-tight">ML Serving Platform</h1>
-        <p class="text-gray-500 text-xs">EfficientNet-B0 · ImageNet 1000 classes</p>
-      </div>
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧠</div>
+    <div class="logo-text">
+      <h1>ML Serving Platform</h1>
+      <p>EfficientNet-B0 · ImageNet-1K</p>
     </div>
-    <div class="flex items-center gap-3">
-      <span id="status-dot" class="flex items-center gap-1.5 text-xs text-gray-500">
-        <span class="w-2 h-2 rounded-full bg-gray-600"></span> checking…
-      </span>
-      <a href="/docs" target="_blank"
-        class="text-xs px-3 py-1.5 border border-gray-700 hover:border-gray-500 rounded-lg text-gray-400 hover:text-white transition">
-        API docs ↗
-      </a>
+  </div>
+  <div class="header-right">
+    <div id="status-badge" class="status-badge">
+      <span class="status-dot"></span>
+      <span id="status-text">checking…</span>
     </div>
-  </header>
+    <a href="/docs" target="_blank" class="btn-ghost">API Docs ↗</a>
+  </div>
+</header>
 
-  <!-- Main -->
-  <main class="flex-1 flex items-start justify-center px-4 py-10 gap-8 flex-wrap">
+<!-- Main -->
+<main>
 
-    <!-- Left: upload -->
-    <div class="w-full max-w-md">
-      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Upload Image</h2>
+  <!-- Left: upload -->
+  <div>
+    <p class="section-label">Upload Image</p>
 
-      <!-- Drop zone -->
-      <div id="drop-zone"
-        class="relative border-2 border-dashed border-gray-700 rounded-2xl p-8 text-center cursor-pointer hover:border-gray-500 transition-all bg-gray-900 mb-4"
-        onclick="document.getElementById('file-input').click()"
-        ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+    <div id="drop-zone"
+      onclick="document.getElementById('file-input').click()"
+      ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
 
-        <!-- Idle state -->
-        <div id="dz-idle">
-          <div class="text-4xl mb-3 opacity-40">🖼️</div>
-          <p class="text-gray-400 text-sm font-medium">Drop an image here</p>
-          <p class="text-gray-600 text-xs mt-1">or click to browse · JPEG, PNG, WebP · max 10 MB</p>
-        </div>
-
-        <!-- Preview state -->
-        <div id="dz-preview" class="hidden">
-          <img id="preview-img" class="mx-auto rounded-xl mb-3" alt="Preview" />
-          <p id="preview-name" class="text-gray-400 text-xs truncate"></p>
-        </div>
-
-        <input id="file-input" type="file" accept="image/*" class="hidden" onchange="onFileSelected(event)" />
+      <div id="dz-idle">
+        <div class="dz-icon">🖼️</div>
+        <p class="dz-title">Drop an image here</p>
+        <p class="dz-sub">or <span>click to browse</span> · JPEG, PNG, WebP · max 10 MB</p>
       </div>
 
-      <!-- Classify button -->
-      <button id="classify-btn" onclick="classify()" disabled
-        class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-semibold text-sm transition-all">
-        Classify Image
-      </button>
-
-      <!-- Try an example -->
-      <div class="mt-4 text-center">
-        <p class="text-xs text-gray-600 mb-2">No image? Try an example:</p>
-        <div class="flex justify-center gap-2 flex-wrap">
-          <button onclick="loadExample('https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Cute_dog.jpg/320px-Cute_dog.jpg', 'dog.jpg')"
-            class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition">🐶 Dog</button>
-          <button onclick="loadExample('https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg', 'ant.jpg')"
-            class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition">🐜 Ant</button>
-          <button onclick="loadExample('https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/320px-Image_created_with_a_mobile_phone.png', 'flower.png')"
-            class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition">🌸 Flower</button>
-        </div>
+      <div id="dz-preview">
+        <img id="preview-img" alt="Preview" />
+        <p id="preview-meta"></p>
       </div>
+
+      <input id="file-input" type="file" accept="image/*" style="display:none" onchange="onFileSelected(event)" />
     </div>
 
-    <!-- Right: results -->
-    <div class="w-full max-w-md">
-      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Predictions</h2>
+    <button id="classify-btn" class="btn-primary" onclick="classify()" disabled>
+      Classify Image
+    </button>
 
-      <!-- Idle placeholder -->
-      <div id="results-idle" class="bg-gray-900 border border-gray-800 rounded-2xl p-10 text-center text-gray-600">
-        <div class="text-4xl mb-3 opacity-30">📊</div>
-        <p class="text-sm">Results will appear here</p>
+    <div class="examples">
+      <span class="examples-label">Try:</span>
+      <div class="examples-btns">
+        <button class="btn-example" onclick="loadExample('/examples/dog.jpg','dog.jpg')">🐶 Dog</button>
+        <button class="btn-example" onclick="loadExample('/examples/cat.jpg','cat.jpg')">🐱 Cat</button>
+        <button class="btn-example" onclick="loadExample('/examples/flower.jpg','flower.jpg')">🌸 Flower</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: results -->
+  <div>
+    <p class="section-label">Predictions</p>
+
+    <div class="results-card">
+
+      <!-- Idle -->
+      <div id="state-idle" class="state-idle">
+        <div class="idle-icon">📊</div>
+        <div>
+          <p class="idle-title">No image selected</p>
+          <p class="idle-sub">Upload an image to run classification</p>
+        </div>
       </div>
 
       <!-- Loading -->
-      <div id="results-loading" class="hidden bg-gray-900 border border-gray-800 rounded-2xl p-10 flex flex-col items-center gap-4">
+      <div id="state-loading" class="state-loading" style="display:none">
         <div class="spinner"></div>
-        <p class="text-gray-500 text-sm">Running inference…</p>
+        <div style="text-align:center">
+          <p class="loading-title">Running inference…</p>
+          <p class="loading-sub">EfficientNet-B0 · 1K classes</p>
+        </div>
       </div>
 
       <!-- Error -->
-      <div id="results-error" class="hidden bg-red-950 border border-red-800 rounded-2xl p-6 text-red-300 text-sm"></div>
+      <div id="state-error" class="state-error" style="display:none">
+        <div class="error-box">
+          <span class="error-icon">⚠️</span>
+          <span id="error-msg"></span>
+        </div>
+      </div>
 
       <!-- Results -->
-      <div id="results-box" class="hidden bg-gray-900 border border-gray-800 rounded-2xl p-6">
-
-        <!-- Meta row -->
-        <div class="flex items-center justify-between mb-5">
-          <span id="res-filename" class="text-xs text-gray-500 truncate max-w-[60%]"></span>
-          <span id="res-latency"
-            class="text-xs font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-1 rounded-lg">
-          </span>
+      <div id="state-results" class="state-results" style="display:none">
+        <div class="result-meta">
+          <span id="res-filename" class="result-filename"></span>
+          <span id="res-latency"  class="result-latency"></span>
         </div>
-
-        <!-- Top prediction hero -->
-        <div id="res-top" class="mb-5 p-4 bg-indigo-600/10 border border-indigo-500/20 rounded-xl">
-          <p class="text-xs text-indigo-400 uppercase tracking-widest mb-1">Top prediction</p>
-          <p id="res-top-label" class="text-xl font-bold capitalize"></p>
-          <p id="res-top-conf" class="text-indigo-300 text-sm mt-0.5"></p>
+        <div class="top-prediction">
+          <div class="top-badge">★ Top Prediction</div>
+          <p id="res-top-label" class="top-label"></p>
+          <p id="res-top-conf"  class="top-conf"></p>
         </div>
-
-        <!-- Top-5 bars -->
-        <div id="res-bars" class="space-y-3"></div>
-
+        <div id="res-bars" class="bars"></div>
       </div>
-    </div>
-  </main>
 
-  <!-- Footer -->
-  <footer class="border-t border-gray-800 px-6 py-3 text-center text-xs text-gray-700">
-    EfficientNet-B0 · PyTorch · FastAPI · Prometheus ·
-    <a href="/docs" class="hover:text-gray-500 transition">Swagger UI</a> ·
-    <a href="/metrics" class="hover:text-gray-500 transition">Metrics</a>
-  </footer>
+    </div>
+  </div>
+
+</main>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-stack">
+    <span class="tech-chip">PyTorch</span>
+    <span class="tech-chip">FastAPI</span>
+    <span class="tech-chip">EfficientNet-B0</span>
+    <span class="tech-chip">Prometheus</span>
+  </div>
+  <div class="footer-links">
+    <a href="/docs">Swagger UI</a>
+    <a href="/metrics">Metrics</a>
+  </div>
+</footer>
 
 <script>
-const API = `${location.protocol}//${location.hostname}:8000`;
+const API = `${location.protocol}//${location.host}`;
 let selectedFile = null;
 
-// ── Health check ──────────────────────────────────────────────────────────────
 async function checkHealth() {
+  const badge = document.getElementById('status-badge');
+  const text  = document.getElementById('status-text');
   try {
     const r = await fetch(`${API}/health`);
-    const dot = document.getElementById('status-dot');
     if (r.ok) {
-      dot.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> API online';
-      dot.className = 'flex items-center gap-1.5 text-xs text-green-400';
-    } else {
-      throw new Error();
-    }
+      badge.className = 'status-badge online';
+      text.textContent = 'API online';
+    } else throw new Error();
   } catch {
-    const dot = document.getElementById('status-dot');
-    dot.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API offline';
-    dot.className = 'flex items-center gap-1.5 text-xs text-red-400';
+    badge.className = 'status-badge offline';
+    text.textContent = 'API offline';
   }
 }
 checkHealth();
 
-// ── Drag & drop ───────────────────────────────────────────────────────────────
 function onDragOver(e) {
   e.preventDefault();
   document.getElementById('drop-zone').classList.add('drag-over');
@@ -206,102 +496,81 @@ function setFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     document.getElementById('preview-img').src = e.target.result;
-    document.getElementById('preview-name').textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} KB`;
-    document.getElementById('dz-idle').classList.add('hidden');
-    document.getElementById('dz-preview').classList.remove('hidden');
+    document.getElementById('preview-meta').textContent =
+      `${file.name}  ·  ${(file.size / 1024).toFixed(0)} KB`;
+    document.getElementById('dz-idle').style.display    = 'none';
+    document.getElementById('dz-preview').style.display = 'block';
   };
   reader.readAsDataURL(file);
   document.getElementById('classify-btn').disabled = false;
-  resetResults();
+  showState('idle');
 }
 
-// ── Example loader ────────────────────────────────────────────────────────────
 async function loadExample(url, name) {
   try {
-    const res = await fetch(url);
+    const res  = await fetch(url);
     const blob = await res.blob();
-    const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
-    setFile(file);
+    if (!blob.type.startsWith('image/')) {
+      alert('Could not load example image — the source returned an unexpected response.');
+      return;
+    }
+    setFile(new File([blob], name, { type: blob.type }));
   } catch {
-    alert('Could not load example image — check your internet connection.');
+    alert('Could not load example image — check your connection.');
   }
 }
 
-// ── Classify ──────────────────────────────────────────────────────────────────
 async function classify() {
   if (!selectedFile) return;
-
-  showLoading();
-
+  showState('loading');
   const form = new FormData();
   form.append('file', selectedFile);
-
   try {
     const res = await fetch(`${API}/predict`, { method: 'POST', body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      showError(`Error ${res.status}: ${err.detail}`);
+      showState('error', `Error ${res.status}: ${err.detail}`);
       return;
     }
-    const data = await res.json();
-    showResults(data);
-  } catch (e) {
-    showError('Could not reach the API. Make sure the server is running on port 8000.');
+    showResults(await res.json());
+  } catch {
+    showState('error', 'Could not reach the API. Make sure the server is running.');
   }
 }
 
-// ── UI states ─────────────────────────────────────────────────────────────────
-function resetResults() {
-  document.getElementById('results-idle').classList.remove('hidden');
-  document.getElementById('results-loading').classList.add('hidden');
-  document.getElementById('results-error').classList.add('hidden');
-  document.getElementById('results-box').classList.add('hidden');
-}
-
-function showLoading() {
-  document.getElementById('results-idle').classList.add('hidden');
-  document.getElementById('results-loading').classList.remove('hidden');
-  document.getElementById('results-error').classList.add('hidden');
-  document.getElementById('results-box').classList.add('hidden');
-}
-
-function showError(msg) {
-  document.getElementById('results-idle').classList.add('hidden');
-  document.getElementById('results-loading').classList.add('hidden');
-  document.getElementById('results-error').classList.remove('hidden');
-  document.getElementById('results-box').classList.add('hidden');
-  document.getElementById('results-error').textContent = msg;
+function showState(state, msg = '') {
+  ['idle','loading','error','results'].forEach(s => {
+    document.getElementById(`state-${s}`).style.display = 'none';
+  });
+  document.getElementById(`state-${state}`).style.display = '';
+  if (state === 'error') document.getElementById('error-msg').textContent = msg;
 }
 
 function showResults(data) {
-  document.getElementById('results-idle').classList.add('hidden');
-  document.getElementById('results-loading').classList.add('hidden');
-  document.getElementById('results-error').classList.add('hidden');
-  document.getElementById('results-box').classList.remove('hidden');
-
   const top = data.predictions[0];
   document.getElementById('res-filename').textContent = data.filename;
-  document.getElementById('res-latency').textContent = `⚡ ${data.inference_ms} ms`;
+  document.getElementById('res-latency').textContent  = `⚡ ${data.inference_ms} ms`;
   document.getElementById('res-top-label').textContent = top.label.replace(/_/g, ' ');
-  document.getElementById('res-top-conf').textContent = `${top.confidence}% confidence`;
+  document.getElementById('res-top-conf').innerHTML =
+    `Confidence: <strong>${top.confidence}%</strong>`;
 
-  // Render bars
   const barsEl = document.getElementById('res-bars');
   barsEl.innerHTML = '';
   data.predictions.forEach((p, i) => {
-    const bar = document.createElement('div');
-    bar.innerHTML = `
-      <div class="flex justify-between text-xs mb-1">
-        <span class="text-gray-300 font-medium capitalize truncate max-w-[70%]">${p.label.replace(/_/g, ' ')}</span>
-        <span class="text-gray-500 font-mono">${p.confidence}%</span>
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `
+      <div class="bar-header">
+        <span class="bar-label">${p.label.replace(/_/g, ' ')}</span>
+        <span class="bar-pct">${p.confidence}%</span>
       </div>
-      <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
-        <div class="bar-fill h-full rounded-full ${i === 0 ? 'bg-indigo-500' : 'bg-gray-600'}" data-target="${p.confidence}"></div>
+      <div class="bar-track">
+        <div class="bar-fill ${i === 0 ? 'top' : 'other'}" data-target="${p.confidence}"></div>
       </div>`;
-    barsEl.appendChild(bar);
+    barsEl.appendChild(row);
   });
 
-  // Animate bars after paint
+  showState('results');
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll('.bar-fill').forEach(el => {
       el.style.width = el.dataset.target + '%';
